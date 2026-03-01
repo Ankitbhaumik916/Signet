@@ -202,39 +202,48 @@ export default function Home() {
                 </button>
               </motion.div>
 
-              {/* Info Section */}
+              {/* Info Section - Key Stats */}
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
                 className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-4"
               >
-                <div className="card text-center">
-                  <div className="text-3xl font-bold text-primary-400 mb-2">
-                    $ml^2$
+                <motion.div
+                  whileHover={{ translateY: -4 }}
+                  className="card text-center bg-gradient-to-br from-purple-900/20 to-purple-800/10 border-purple-700/30 hover:border-purple-600/50 transition-colors"
+                >
+                  <div className="text-4xl md:text-5xl font-bold mb-3 text-transparent bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text">
+                    ML<sup className="text-2xl">2</sup>
                   </div>
-                  <div className="text-sm text-gray-400">
+                  <div className="text-sm text-gray-300 font-medium">
                     Siamese CNN Architecture
                   </div>
-                </div>
+                </motion.div>
 
-                <div className="card text-center">
-                  <div className="text-3xl font-bold text-primary-400 mb-2">
+                <motion.div
+                  whileHover={{ translateY: -4 }}
+                  className="card text-center bg-gradient-to-br from-emerald-900/20 to-emerald-800/10 border-emerald-700/30 hover:border-emerald-600/50 transition-colors"
+                >
+                  <div className="text-4xl md:text-5xl font-bold mb-3 text-transparent bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text">
                     99%
                   </div>
-                  <div className="text-sm text-gray-400">
+                  <div className="text-sm text-gray-300 font-medium">
                     Detection Accuracy
                   </div>
-                </div>
+                </motion.div>
 
-                <div className="card text-center">
-                  <div className="text-3xl font-bold text-primary-400 mb-2">
+                <motion.div
+                  whileHover={{ translateY: -4 }}
+                  className="card text-center bg-gradient-to-br from-blue-900/20 to-blue-800/10 border-blue-700/30 hover:border-blue-600/50 transition-colors"
+                >
+                  <div className="text-4xl md:text-5xl font-bold mb-3 text-transparent bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text">
                     &lt; 1s
                   </div>
-                  <div className="text-sm text-gray-400">
+                  <div className="text-sm text-gray-300 font-medium">
                     Processing Time
                   </div>
-                </div>
+                </motion.div>
               </motion.div>
             </motion.div>
           )}
