@@ -15,9 +15,5 @@
       "src": "/(.*)",
       "dest": "main.py"
     }
-  ],
-  "env": {
-    "ALLOWED_ORIGINS": "@allowed_origins",
-    "MODEL_CACHE_DIR": "/tmp/signature_model_weights"
-  }
+  ]
 }
