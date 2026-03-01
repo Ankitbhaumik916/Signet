@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import logging
 import torch
+import gc
 
 from model.siamese_model import SiameseModel
 from utils.preprocess import preprocess_signature
@@ -18,6 +19,9 @@ from utils.similarity import compute_similarity, compute_heatmap
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+torch.set_num_threads(int(os.getenv("TORCH_NUM_THREADS", "1")))
+torch.set_num_interop_threads(int(os.getenv("TORCH_NUM_INTEROP_THREADS", "1")))
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -56,8 +60,8 @@ def load_model():
 
 @app.on_event("startup")
 async def startup_event():
-    """Load model on startup"""
-    load_model()
+    """Startup hook for lightweight boot on low-memory platforms"""
+    logger.info("Skipping eager model load to reduce startup memory usage")
 
 
 @app.get("/health", tags=["Health"])
@@ -174,6 +178,8 @@ async def verify_signature(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
+    finally:
+        gc.collect()
 
 
 @app.get("/", tags=["Root"])

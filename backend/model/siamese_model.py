@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class CNNEncoder(nn.Module):
     """
     CNN Encoder for extracting signature features
-    Architecture: Conv layers → MaxPool → Flatten → Dense layers
+    Architecture: Conv layers → MaxPool → Global Pool → Dense layers
     """
     
     def __init__(self, input_channels: int = 1):
@@ -28,44 +28,44 @@ class CNNEncoder(nn.Module):
         """
         super(CNNEncoder, self).__init__()
         
-        # Convolutional blocks
-        self.conv1 = nn.Conv2d(input_channels, 64, kernel_size=3, padding=1)
+        # Lightweight convolutional blocks
+        self.conv1 = nn.Conv2d(input_channels, 32, kernel_size=3, padding=1)
         self.relu1 = nn.ReLU(inplace=True)
         self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
         
-        self.conv2 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
         self.relu2 = nn.ReLU(inplace=True)
         self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
         
-        self.conv3 = nn.Conv2d(128, 256, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
         self.relu3 = nn.ReLU(inplace=True)
         self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
         
-        self.conv4 = nn.Conv2d(256, 256, kernel_size=3, padding=1)
+        self.conv4 = nn.Conv2d(128, 256, kernel_size=3, padding=1)
         self.relu4 = nn.ReLU(inplace=True)
         self.pool4 = nn.MaxPool2d(kernel_size=2, stride=2)
-        
-        # Calculate flattened size: 224x224 → 112x112 → 56x56 → 28x28 → 14x14
-        self.flatten_size = 256 * 14 * 14
-        
+
+        # Global pooling keeps memory stable across input sizes
+        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
+
         # Dense layers
-        self.fc1 = nn.Linear(self.flatten_size, 4096)
+        self.fc1 = nn.Linear(256, 256)
         self.relu_fc1 = nn.ReLU(inplace=True)
-        self.dropout1 = nn.Dropout(p=0.5)
-        
-        self.fc2 = nn.Linear(4096, 1024)
+        self.dropout1 = nn.Dropout(p=0.2)
+
+        self.fc2 = nn.Linear(256, 128)
         self.relu_fc2 = nn.ReLU(inplace=True)
-        self.dropout2 = nn.Dropout(p=0.5)
+        self.dropout2 = nn.Dropout(p=0.2)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass through the encoder
         
         Args:
-            x: Input tensor of shape (batch_size, 1, 224, 224)
+            x: Input tensor of shape (batch_size, 1, H, W)
         
         Returns:
-            L2-normalized embedding of shape (batch_size, 1024)
+            L2-normalized embedding of shape (batch_size, 128)
         """
         # Convolutional layers
         x = self.conv1(x)
@@ -84,7 +84,8 @@ class CNNEncoder(nn.Module):
         x = self.relu4(x)
         x = self.pool4(x)
         
-        # Flatten
+        # Global pool + flatten
+        x = self.global_pool(x)
         x = x.view(x.size(0), -1)
         
         # Dense layers
@@ -96,7 +97,7 @@ class CNNEncoder(nn.Module):
         x = self.relu_fc2(x)
         x = self.dropout2(x)
         
-        # L2 Normalization
+        # L2 normalization
         x = F.normalize(x, p=2, dim=1)
         
         return x
@@ -187,20 +188,7 @@ class SiameseModel:
         Fallback: Initialize encoder with ResNet50 backbone features
         This provides better transfer learning than random init
         """
-        try:
-            import torchvision.models as models
-            logger.info("Initializing with ResNet50 backbone..."
-            )
-            
-            # Load pretrained ResNet50
-            resnet50 = models.resnet50(pretrained=True)
-            
-            # Extract conv1-layer4 features
-            # Map ResNet layers to our custom CNN
-            # This is a compatibility layer for transfer learning
-            logger.info("ResNet50 backbone initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize ResNet50: {str(e)}")
+        logger.info("Using lightweight randomly initialized encoder for low-memory deployment")
     
     def save_weights(self, path: str):
         """

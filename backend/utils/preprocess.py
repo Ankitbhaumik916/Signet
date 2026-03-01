@@ -194,7 +194,7 @@ def apply_gaussian_blur(image: np.ndarray, kernel_size: int = 3) -> np.ndarray:
 
 def preprocess_signature(
     image_bytes: bytes,
-    target_size: Tuple[int, int] = (224, 224),
+    target_size: Tuple[int, int] = (128, 128),
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
 ) -> Optional[torch.Tensor]:
     """
