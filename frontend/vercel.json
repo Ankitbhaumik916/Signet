@@ -1,8 +1,5 @@
 {
   "version": 2,
   "framework": "nextjs",
-  "buildCommand": "npm run build",
-  "env": {
-    "PYTHON_BACKEND_URL": "@python_backend_url"
-  }
+  "buildCommand": "npm run build"
 }
