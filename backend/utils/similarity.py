@@ -11,6 +11,7 @@ import logging
 import base64
 from io import BytesIO
 from typing import Tuple
+from skimage.metrics import structural_similarity as ssim
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,54 @@ def compute_similarity(
     
     except Exception as e:
         logger.error(f"Error computing similarity: {str(e)}")
+        return 0.0, "Low"
+
+
+def compute_classical_similarity(
+    image1_tensor: torch.Tensor,
+    image2_tensor: torch.Tensor
+) -> Tuple[float, str]:
+    """
+    Compute deterministic similarity using image structure + pixel agreement.
+
+    This path is used when no pretrained neural weights are available.
+    """
+    try:
+        img1 = tensor_to_numpy(image1_tensor)
+        img2 = tensor_to_numpy(image2_tensor)
+
+        if img1.shape != img2.shape:
+            img2 = cv2.resize(img2, (img1.shape[1], img1.shape[0]))
+
+        # Structural similarity in [-1, 1]
+        structural_score = float(ssim(img1, img2, data_range=1.0))
+        structural_score = max(0.0, min(1.0, (structural_score + 1.0) / 2.0))
+
+        # Pixel agreement score in [0, 1]
+        mean_abs_diff = float(np.mean(np.abs(img1 - img2)))
+        pixel_agreement = max(0.0, min(1.0, 1.0 - mean_abs_diff))
+
+        # Weighted combination (more weight on structure)
+        similarity = 0.7 * structural_score + 0.3 * pixel_agreement
+        similarity = max(0.0, min(1.0, similarity))
+
+        if similarity >= 0.93:
+            confidence = "High"
+        elif similarity >= 0.82:
+            confidence = "Medium"
+        else:
+            confidence = "Low"
+
+        logger.info(
+            "Classical similarity: %.4f (ssim=%.4f, pixel=%.4f)",
+            similarity,
+            structural_score,
+            pixel_agreement,
+        )
+        return similarity, confidence
+
+    except Exception as e:
+        logger.error(f"Error computing classical similarity: {str(e)}")
         return 0.0, "Low"
 
 

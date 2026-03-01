@@ -14,7 +14,7 @@ import gc
 
 from model.siamese_model import SiameseModel
 from utils.preprocess import preprocess_signature
-from utils.similarity import compute_similarity, compute_heatmap
+from utils.similarity import compute_similarity, compute_classical_similarity, compute_heatmap
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -129,30 +129,49 @@ async def verify_signature(
                 detail="Failed to preprocess images. Ensure images are valid signatures."
             )
         
-        # Generate embeddings using the model
-        with torch.no_grad():
-            genuine_embedding = model.encoder(genuine_tensor)
-            test_embedding = model.encoder(test_tensor)
-        
-        # Compute similarity score
-        similarity_score, confidence = compute_similarity(
-            genuine_embedding,
-            test_embedding
-        )
-        
-        # Determine verdict based on similarity thresholds
-        if similarity_score >= 0.85:
-            verdict = "Genuine"
-            is_authentic = True
-            conf_level = "High"
-        elif similarity_score >= 0.70:
-            verdict = "Suspicious"
-            is_authentic = False
-            conf_level = "Medium"
+        inference_mode = "neural"
+
+        if getattr(model, "has_pretrained_weights", False):
+            with torch.no_grad():
+                genuine_embedding = model.encoder(genuine_tensor)
+                test_embedding = model.encoder(test_tensor)
+
+            similarity_score, confidence = compute_similarity(
+                genuine_embedding,
+                test_embedding
+            )
+
+            if similarity_score >= 0.88:
+                verdict = "Genuine"
+                is_authentic = True
+                conf_level = "High"
+            elif similarity_score >= 0.78:
+                verdict = "Suspicious"
+                is_authentic = False
+                conf_level = "Medium"
+            else:
+                verdict = "Forged"
+                is_authentic = False
+                conf_level = "High"
         else:
-            verdict = "Forged"
-            is_authentic = False
-            conf_level = "High"
+            inference_mode = "classical-fallback"
+            similarity_score, confidence = compute_classical_similarity(
+                genuine_tensor,
+                test_tensor
+            )
+
+            if similarity_score >= 0.93:
+                verdict = "Genuine"
+                is_authentic = True
+                conf_level = "High"
+            elif similarity_score >= 0.82:
+                verdict = "Suspicious"
+                is_authentic = False
+                conf_level = "Medium"
+            else:
+                verdict = "Forged"
+                is_authentic = False
+                conf_level = "High"
         
         # Generate difference heatmap
         heatmap_b64 = compute_heatmap(genuine_tensor, test_tensor)
@@ -166,7 +185,8 @@ async def verify_signature(
                 "similarity_score": float(similarity_score),
                 "confidence": conf_level,
                 "difference_heatmap": heatmap_b64,
-                "verdict": verdict
+                "verdict": verdict,
+                "inference_mode": inference_mode
             }
         )
     

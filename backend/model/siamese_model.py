@@ -145,6 +145,7 @@ class SiameseModel:
         """Initialize the Siamese model"""
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f"Using device: {self.device}")
+        self.has_pretrained_weights = False
         
         self.model = SiameseNetwork(input_channels=1).to(self.device)
         self.encoder = self.model.encoder
@@ -165,6 +166,7 @@ class SiameseModel:
                 logger.info(f"Loading weights from local cache: {local_weights_path}")
                 checkpoint = torch.load(local_weights_path, map_location=self.device)
                 self.model.load_state_dict(checkpoint)
+                self.has_pretrained_weights = True
                 logger.info("Weights loaded successfully")
                 return
             
@@ -188,6 +190,7 @@ class SiameseModel:
         Fallback: Initialize encoder with ResNet50 backbone features
         This provides better transfer learning than random init
         """
+        self.has_pretrained_weights = False
         logger.info("Using lightweight randomly initialized encoder for low-memory deployment")
     
     def save_weights(self, path: str):
