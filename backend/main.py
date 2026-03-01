@@ -50,7 +50,8 @@ def load_model():
         logger.info("Model loaded successfully")
     except Exception as e:
         logger.error(f"Error loading model: {str(e)}")
-        raise
+        logger.warning("Model will be loaded on first request")
+        # Don't raise - allow app to start
 
 
 @app.on_event("startup")
@@ -90,8 +91,12 @@ async def verify_signature(
         - verdict: str (Genuine/Forged/Suspicious)
     """
     try:
+        # Lazy load model if not already loaded
         if model is None:
-            raise HTTPException(status_code=500, detail="Model not loaded")
+            logger.info("Model not loaded yet, loading now...")
+            load_model()
+            if model is None:
+                raise HTTPException(status_code=500, detail="Model failed to load")
         
         # Validate file types
         valid_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp"}
