@@ -1,0 +1,380 @@
+SIGNET - DETAILED PROJECT REPORT
+Generated on: April 9, 2026
+Project Root: signature-auth/
+
+============================================================
+1. PROJECT SUMMARY
+============================================================
+
+Signet is a full-stack signature authentication system that compares two uploaded signature images and returns an authenticity verdict.
+
+Primary objective:
+- Verify whether a test signature matches a genuine reference signature.
+
+Core value:
+- Provides a practical, explainable signature comparison pipeline with visual evidence (difference heatmap), similarity scoring, and confidence labels.
+
+Technology stack (high level):
+- Frontend: Next.js 14, React 18, TypeScript, Tailwind CSS, Framer Motion
+- Backend: FastAPI, PyTorch, OpenCV, NumPy
+- Deployment: Frontend on Vercel, Backend on Railway/Vercel-compatible Python deployment
+
+
+============================================================
+2. PROBLEM DOMAIN AND USE CASES
+============================================================
+
+Signet addresses digital signature verification workflows where visual comparison and approximate similarity scoring are needed.
+
+Potential use cases:
+- Preliminary verification in document workflows
+- Educational/demo systems for signature matching concepts
+- Decision-support layer before manual human review
+
+Important context:
+- Current system output is best treated as decision support, not legal proof.
+- Performance quality depends heavily on model weights, data quality, and input consistency.
+
+
+============================================================
+3. SOLUTION OVERVIEW
+============================================================
+
+The user uploads:
+1) Genuine signature image
+2) Test signature image
+
+System workflow:
+1. Frontend collects files and submits multipart request.
+2. Next.js API route (/api/verify) proxies request to Python backend.
+3. Backend preprocesses both images.
+4. Backend computes similarity through either neural mode or classical fallback mode.
+5. Backend returns:
+   - is_authentic
+   - similarity_score
+   - confidence
+   - verdict
+   - difference_heatmap (base64 image)
+   - inference_mode
+6. Frontend displays scores, verdict, and visual comparison.
+
+
+============================================================
+4. ARCHITECTURE DETAILS
+============================================================
+
+4.1 Frontend Layer
+- Built with App Router architecture in Next.js 14.
+- Main UI page in app/page.tsx.
+- Uses dedicated reusable components for upload, result card, and similarity meter.
+- Calls internal route app/api/verify/route.ts.
+
+4.2 API Proxy Layer
+- The Next.js route receives browser requests and forwards them to backend endpoint /verify.
+- Backend base URL is controlled with environment variable:
+  PYTHON_BACKEND_URL
+
+4.3 Backend Service Layer
+- FastAPI service exposes:
+  - GET /
+  - GET /health
+  - POST /verify
+- Handles image validation, preprocessing, model inference/scoring, and response formatting.
+
+4.4 ML/Inference Layer
+- Siamese-inspired signature comparison pipeline with embedding-based inference when pretrained weights are available.
+- Includes classical fallback mode when pretrained weights are unavailable to avoid unreliable random-weight behavior.
+
+4.5 Explainability Layer
+- Difference heatmap is generated from pixel-wise differences and returned to frontend for visualization.
+
+
+============================================================
+5. MACHINE LEARNING AND IMAGE PIPELINE
+============================================================
+
+5.1 Preprocessing Steps (per image)
+- Decode bytes with OpenCV.
+- Convert to grayscale.
+- Apply Gaussian blur.
+- Apply Otsu thresholding.
+- Detect signature region via contours.
+- Crop and center detected region.
+- Resize to standard input size (typically 128x128).
+- Normalize values to [0, 1].
+- Convert to tensor shape suitable for model inference.
+
+5.2 Siamese Encoder (as documented)
+- Convolution + ReLU + MaxPool blocks with increasing channels.
+- Adaptive pooling to reduce feature map to compact vector.
+- Dense layers to create normalized embedding.
+- Shared encoder compares both signatures in same feature space.
+
+5.3 Inference Modes
+A) Neural mode
+- Used when pretrained weights are successfully loaded.
+- Uses embedding similarity.
+- Typical thresholds (documented):
+  - >= 0.88: Genuine
+  - 0.78 to 0.8799: Suspicious
+  - < 0.78: Forged
+
+B) Classical fallback mode
+- Used when pretrained weights are not available.
+- Uses blended structural and pixel similarity:
+  score = 0.7 * SSIM + 0.3 * pixel_agreement
+- Stricter thresholds (documented):
+  - >= 0.93: Genuine
+  - 0.82 to 0.9299: Suspicious
+  - < 0.82: Forged
+
+5.4 Output Semantics
+- similarity_score: Numeric similarity estimate.
+- confidence: Qualitative confidence level.
+- verdict: Human-readable class label.
+- difference_heatmap: Visual guidance for mismatched regions.
+- inference_mode: Clarifies whether neural or fallback path was used.
+
+
+============================================================
+6. REPOSITORY STRUCTURE (CURRENT)
+============================================================
+
+signature-auth/
+  DEPLOYMENT.md
+  FINAL_REPORT.md
+  QUICKSTART.md
+  README.md
+  railway.toml
+  validate.py
+  VALIDATION_REPORT.py
+
+  backend/
+    __init__.py
+    Dockerfile
+    main.py
+    pyproject.toml
+    railway.toml
+    requirements.txt
+    vercel.json
+
+    api/
+      index.py
+
+    model/
+      __init__.py
+      siamese_model.py
+      train.py
+
+    utils/
+      __init__.py
+      preprocess.py
+      similarity.py
+
+  frontend/
+    next-env.d.ts
+    next.config.js
+    package.json
+    postcss.config.js
+    tailwind.config.js
+    tsconfig.json
+    vercel.json
+
+    app/
+      globals.css
+      layout.tsx
+      page.tsx
+      api/
+        verify/
+          route.ts
+
+    components/
+      ResultCard.tsx
+      SignatureUploader.tsx
+      SimilarityMeter.tsx
+
+    public/
+
+
+============================================================
+7. API CONTRACT (BACKEND)
+============================================================
+
+7.1 GET /
+- Purpose: Basic service metadata and endpoint information.
+
+7.2 GET /health
+- Purpose: Health and runtime status checks.
+- Typical response includes status and CUDA availability.
+
+7.3 POST /verify
+- Content type: multipart/form-data
+- Required file fields:
+  - genuine
+  - test
+- Supported image formats:
+  jpg, jpeg, png, gif, bmp
+
+Success response fields:
+- is_authentic (boolean)
+- similarity_score (number)
+- confidence (string)
+- verdict (string)
+- difference_heatmap (base64 data URL)
+- inference_mode (string, where implemented)
+
+Error scenarios:
+- Invalid or missing files
+- Unsupported format
+- Preprocessing failure
+- Inference runtime error
+
+
+============================================================
+8. FRONTEND IMPLEMENTATION SUMMARY
+============================================================
+
+Primary UX features:
+- Dual upload interface for genuine and test signatures.
+- Interactive validation/error messaging.
+- Animated similarity meter and result card.
+- Heatmap display for visual interpretation.
+- Responsive layout for desktop/mobile usage.
+
+Core frontend responsibilities:
+- File acquisition and preview.
+- Request orchestration via /api/verify.
+- Result rendering and state handling.
+- Graceful error display when backend/proxy fails.
+
+
+============================================================
+9. BACKEND IMPLEMENTATION SUMMARY
+============================================================
+
+Core backend responsibilities:
+- Expose API endpoints for health and verification.
+- Validate input file types and payloads.
+- Perform robust preprocessing before scoring.
+- Run neural inference or fallback similarity logic.
+- Generate heatmap data for explanation.
+- Return consistent JSON schema to frontend.
+
+Design considerations observed in docs:
+- Lazy model loading to reduce cold-start memory pressure.
+- CPU-oriented operation for low-resource deployment.
+- Compatibility handling (NumPy/PyTorch/OpenCV constraints).
+
+
+============================================================
+10. DEPLOYMENT STATUS AND READINESS
+============================================================
+
+Current deployment references (as documented):
+- Frontend (Vercel): https://signet-rose.vercel.app/
+- Backend (Railway): https://signet-production-a520.up.railway.app
+- Health endpoint: /health
+
+Readiness indicators from existing documentation:
+- Backend Python syntax validated.
+- Frontend TypeScript build validated.
+- Next.js production build succeeds.
+- Config files present for Vercel/Railway.
+
+Environment variables:
+- Frontend:
+  - PYTHON_BACKEND_URL
+- Backend:
+  - ALLOWED_ORIGINS
+  - MODEL_CACHE_DIR (deployment-dependent)
+
+
+============================================================
+11. VALIDATION HIGHLIGHTS (FROM EXISTING REPORTS)
+============================================================
+
+Documented fixes previously completed:
+- Python f-string formatting corrections in training script.
+- Tailwind color class correction in global stylesheet.
+- Next.js config cleanup for deprecated experimental field.
+- Type compatibility fixes in uploader/page handlers.
+
+Documented quality outcomes:
+- Python syntax checks passing.
+- TypeScript type checks passing.
+- Frontend build successful.
+- Development server confirmed running during validation phase.
+
+
+============================================================
+12. STRENGTHS OF THE CURRENT PROJECT
+============================================================
+
+- Clear full-stack separation between UI, proxy, and inference service.
+- Practical inference fallback path for missing pretrained weights.
+- Explainable output through heatmap and transparent score/verdict fields.
+- Good documentation coverage (README, quickstart, deployment, validation).
+- Deployment-ready structure with environment variable based configuration.
+
+
+============================================================
+13. LIMITATIONS AND RISK FACTORS
+============================================================
+
+- Real-world reliability depends on true pretrained model quality.
+- Signature verification can be sensitive to scan quality and writing variability.
+- Fallback mode is conservative but less sophisticated than a fully trained biometric model.
+- Cold starts and model download size can affect first-request latency.
+- No explicit mention of authentication/rate limiting for public API usage.
+
+
+============================================================
+14. RECOMMENDED IMPROVEMENTS
+============================================================
+
+Model and ML quality:
+- Train and version domain-specific weights on labeled signature datasets.
+- Perform threshold calibration using ROC/EER and maintain validation reports.
+- Introduce input quality gate (reject low-quality/non-signature images).
+
+Platform and reliability:
+- Add API authentication (API key/JWT) for production.
+- Add request rate limiting and abuse protection.
+- Add structured observability (request logs, latency, error rate dashboards).
+- Add integration tests covering upload -> verify -> UI rendering path.
+
+Product and UX:
+- Provide explicit "inference mode" indicator in UI for user transparency.
+- Add downloadable verification report with timestamp and score details.
+- Improve accessibility and localization support.
+
+
+============================================================
+15. OPERATIONAL GUIDE (SHORT)
+============================================================
+
+Local run sequence:
+1. Start backend service (FastAPI).
+2. Start frontend service (Next.js).
+3. Ensure frontend env points to backend URL.
+4. Upload two signature images and run verification.
+
+Deployment sequence:
+1. Deploy backend first.
+2. Configure backend env vars.
+3. Deploy frontend with PYTHON_BACKEND_URL set to backend URL.
+4. Validate /health and end-to-end verification flow.
+
+
+============================================================
+16. FINAL ASSESSMENT
+============================================================
+
+Overall assessment:
+- The project is well-structured, deployment-aware, and functionally complete for a production-style prototype and practical signature verification demo.
+
+Production suitability:
+- Suitable for controlled production scenarios and decision-support workflows.
+- For high-stakes identity verification, additional model calibration, security hardening, and operational controls are strongly recommended before broad rollout.
+
+End of report.
