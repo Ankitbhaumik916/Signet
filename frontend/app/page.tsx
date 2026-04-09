@@ -12,6 +12,9 @@ interface VerificationResult {
   confidence: string
   difference_heatmap: string
   verdict: string
+  inference_mode?: 'hybrid-neural' | 'classical-fallback' | string
+  neural_score?: number | null
+  classical_score?: number | null
 }
 
 type AppState = 'upload' | 'verifying' | 'result' | 'error'
@@ -28,6 +31,7 @@ export default function Home() {
   const [testPreview, setTestPreview] = useState<string>('')
   const [result, setResult] = useState<VerificationResult | null>(null)
   const [error, setError] = useState<string>('')
+  const [showWarmupBanner, setShowWarmupBanner] = useState(false)
 
   // Handle genuine signature selection
   const handleGenuineFileSelect = (file: File | null) => {
@@ -68,6 +72,11 @@ export default function Home() {
 
     setState('verifying')
     setError('')
+    setShowWarmupBanner(false)
+
+    const warmupTimer = setTimeout(() => {
+      setShowWarmupBanner(true)
+    }, 8000)
 
     try {
       const formData = new FormData()
@@ -91,6 +100,9 @@ export default function Home() {
       const errorMessage = err instanceof Error ? err.message : 'An error occurred during verification'
       setError(errorMessage)
       setState('error')
+    } finally {
+      clearTimeout(warmupTimer)
+      setShowWarmupBanner(false)
     }
   }
 
@@ -135,7 +147,7 @@ export default function Home() {
               </h1>
             </div>
             <p className="text-gray-400 text-lg max-w-2xl mx-auto">
-              AI-powered forgery detection using deep learning
+              Hybrid Siamese CNN verification with classical fallback scoring
             </p>
           </motion.div>
         </div>
@@ -214,10 +226,10 @@ export default function Home() {
                   className="card text-center bg-gradient-to-br from-purple-900/20 to-purple-800/10 border-purple-700/30 hover:border-purple-600/50 transition-colors"
                 >
                   <div className="text-4xl md:text-5xl font-bold mb-3 text-transparent bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text">
-                    ML<sup className="text-2xl">2</sup>
+                    HY
                   </div>
                   <div className="text-sm text-gray-300 font-medium">
-                    Siamese CNN Architecture
+                    Hybrid Neural Inference
                   </div>
                 </motion.div>
 
@@ -226,10 +238,10 @@ export default function Home() {
                   className="card text-center bg-gradient-to-br from-emerald-900/20 to-emerald-800/10 border-emerald-700/30 hover:border-emerald-600/50 transition-colors"
                 >
                   <div className="text-4xl md:text-5xl font-bold mb-3 text-transparent bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text">
-                    99%
+                    DL
                   </div>
                   <div className="text-sm text-gray-300 font-medium">
-                    Detection Accuracy
+                    Siamese + Classical Blend
                   </div>
                 </motion.div>
 
@@ -238,10 +250,10 @@ export default function Home() {
                   className="card text-center bg-gradient-to-br from-blue-900/20 to-blue-800/10 border-blue-700/30 hover:border-blue-600/50 transition-colors"
                 >
                   <div className="text-4xl md:text-5xl font-bold mb-3 text-transparent bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text">
-                    &lt; 1s
+                    2x
                   </div>
                   <div className="text-sm text-gray-300 font-medium">
-                    Processing Time
+                    Mode-Aware Thresholding
                   </div>
                 </motion.div>
               </motion.div>
@@ -281,9 +293,22 @@ export default function Home() {
               <div className="text-center space-y-2">
                 <h2 className="text-2xl font-bold">Analyzing Signatures</h2>
                 <p className="text-gray-400 text-lg">
-                  Running deep learning model to detect forgeries...
+                  Running hybrid neural scoring with robustness checks...
                 </p>
               </div>
+
+              <AnimatePresence>
+                {showWarmupBanner && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    className="w-full rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+                  >
+                    Model is warming up, this may take up to 20 seconds on first request.
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Progress Dots */}
               <div className="flex gap-2">

@@ -10,7 +10,7 @@ import numpy as np
 import logging
 import base64
 from io import BytesIO
-from typing import Tuple
+from typing import Optional, Tuple
 from skimage.metrics import structural_similarity as ssim
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,6 @@ def compute_cosine_similarity(
         Cosine similarity score (0-1, where 1 is identical)
     """
     similarity = F.cosine_similarity(embedding1, embedding2, dim=1)
-    # Scale from [-1, 1] to [0, 1]
     similarity = (similarity + 1) / 2
     return similarity
 
@@ -79,20 +78,14 @@ def compute_similarity(
     try:
         with torch.no_grad():
             if method == "euclidean":
-                # Euclidean distance approach
-                # Normalize embeddings to [0, 1] range
                 distance = compute_euclidean_distance(embedding1, embedding2)
-                
-                # Convert distance to similarity
-                # Assuming max distance is ~2.0 for normalized embeddings
                 similarity = torch.exp(-distance / 0.5).item()
                 similarity = max(0.0, min(1.0, similarity))
-            
+
             elif method == "cosine":
-                # Cosine similarity approach (already in [0, 1])
                 similarity = compute_cosine_similarity(embedding1, embedding2).item()
                 similarity = max(0.0, min(1.0, similarity))
-            
+
             else:
                 raise ValueError(f"Unknown similarity method: {method}")
         
@@ -171,16 +164,18 @@ def tensor_to_numpy(tensor: torch.Tensor) -> np.ndarray:
         Numpy array of shape (H, W)
     """
     tensor = tensor.cpu().detach()
-    
-    # Remove batch dimension if present
+
     if tensor.dim() == 4:
-        tensor = tensor.squeeze(0)  # (1, 1, H, W) -> (1, H, W)
-    
+        tensor = tensor.squeeze(0)
+
     if tensor.dim() == 3:
-        tensor = tensor.squeeze(0)  # (1, H, W) -> (H, W)
-    
-    array = tensor.numpy()
-    return array
+        tensor = tensor.squeeze(0)
+
+    array = tensor.numpy().astype(np.float32)
+    if array.max() > 1.0:
+        array = array / 255.0
+
+    return np.clip(array, 0.0, 1.0)
 
 
 def compute_pixel_difference(
@@ -340,59 +335,21 @@ def compute_heatmap(
         return ""
 
 
-def compute_grad_cam_heatmap(
-    image_tensor: torch.Tensor,
-    model_encoder: torch.nn.Module,
-    target_layer: torch.nn.Module
-) -> np.ndarray:
+def blend_similarity_scores(
+    neural_score: float,
+    classical_score: float,
+    neural_weight: float = 0.85,
+    classical_weight: float = 0.15
+) -> float:
     """
-    Compute Grad-CAM heatmap for visualization of CNN attention
-    
-    Args:
-        image_tensor: Input image tensor (1, 1, H, W)
-        model_encoder: CNN encoder model
-        target_layer: Layer to compute gradients for
-    
-    Returns:
-        Grad-CAM heatmap (H, W) with values in [0, 1]
+    Blend neural and classical scores for better robustness on noisy inputs.
     """
-    try:
-        image_tensor.requires_grad_(True)
-        
-        # Forward pass
-        output = model_encoder(image_tensor)
-        
-        # Backward pass to compute gradients
-        loss = output.sum()
-        loss.backward()
-        
-        # Get gradients from target layer
-        # This is a simplified implementation
-        gradients = image_tensor.grad
-        
-        # Compute CAM
-        weights = gradients.mean(dim=(2, 3), keepdim=True)
-        cam = (weights * image_tensor).sum(dim=1, keepdim=True)
-        cam = F.relu(cam)
-        
-        # Normalize to [0, 1]
-        cam_min = cam.min()
-        cam_max = cam.max()
-        if cam_max > cam_min:
-            cam = (cam - cam_min) / (cam_max - cam_min)
-        
-        # Convert to numpy
-        cam_np = tensor_to_numpy(cam)
-        
-        return cam_np
-    
-    except Exception as e:
-        logger.error(f"Error computing Grad-CAM: {str(e)}")
-        return np.zeros((224, 224))
+    total_weight = neural_weight + classical_weight
+    if total_weight <= 0:
+        return max(0.0, min(1.0, neural_score))
+
+    blended = (neural_score * neural_weight + classical_score * classical_weight) / total_weight
+    return max(0.0, min(1.0, blended))
 
 
-# Import PIL Image for base64 conversion
-try:
-    from PIL import Image
-except ImportError:
-    logger.warning("PIL not available, some heatmap features may not work")
+from PIL import Image

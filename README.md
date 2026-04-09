@@ -3,7 +3,7 @@
 Production-ready full-stack application for signature verification using a Siamese CNN pipeline.
 
 - Frontend: Next.js 14 + TypeScript + Tailwind (deployed on Vercel)
-- Backend: FastAPI + PyTorch + OpenCV (deployed on Railway)
+- Backend: FastAPI + PyTorch + OpenCV
 - Inference: pairwise comparison of genuine/test signatures with heatmap output
 
 ---
@@ -13,13 +13,14 @@ Production-ready full-stack application for signature verification using a Siame
 1. [Overview](#overview)
 2. [Live Deployment](#live-deployment)
 3. [Architecture](#architecture)
-4. [Repository Structure](#repository-structure)
-5. [API Contract](#api-contract)
-6. [Environment Variables](#environment-variables)
-7. [Local Development](#local-development)
-8. [Deployment Guide (Detailed)](#deployment-guide-detailed)
-9. [Troubleshooting](#troubleshooting)
-10. [Operational Notes](#operational-notes)
+4. [ML Model Details](#ml-model-details)
+5. [Repository Structure](#repository-structure)
+6. [API Contract](#api-contract)
+7. [Environment Variables](#environment-variables)
+8. [Local Development](#local-development)
+9. [Deployment Guide (Detailed)](#deployment-guide-detailed)
+10. [Troubleshooting](#troubleshooting)
+11. [Operational Notes](#operational-notes)
 
 ---
 
@@ -30,13 +31,16 @@ Signet compares two signature images:
 1. `genuine` (reference signature)
 2. `test` (signature to verify)
 
-The backend preprocesses both images, generates embeddings with a Siamese encoder, computes similarity, and returns:
+The backend preprocesses both images, computes neural and classical similarity signals, and returns:
 
 - `is_authentic`
 - `similarity_score`
 - `confidence`
 - `difference_heatmap` (base64 image)
 - `verdict`
+- `inference_mode`
+- `neural_score` (when neural weights are available)
+- `classical_score`
 
 The frontend calls a Next.js API route (`/api/verify`) that proxies to the backend URL from `PYTHON_BACKEND_URL`.
 
@@ -45,8 +49,8 @@ The frontend calls a Next.js API route (`/api/verify`) that proxies to the backe
 ## Live Deployment
 
 - Frontend (Vercel): https://signet-rose.vercel.app/
-- Backend (Railway): https://signet-production-a520.up.railway.app
-- Backend health: https://signet-production-a520.up.railway.app/health
+- Backend (Vercel): https://signet-backend.vercel.app
+- Backend health: https://signet-backend.vercel.app/health
 
 Expected health response:
 
@@ -54,7 +58,8 @@ Expected health response:
 {
   "status": "ok",
   "service": "Signature Authentication API",
-  "cuda_available": false
+  "cuda_available": false,
+  "inference_mode": "hybrid-neural"
 }
 ```
 
@@ -73,14 +78,125 @@ Expected health response:
 
 ### Runtime Design Choices
 
-- Backend runs CPU-only PyTorch on Railway
-- NumPy pinned to `<2` for PyTorch/OpenCV ABI compatibility
-- Model loading is lazy (not eager at startup)
+- Backend uses a Siamese CNN when pretrained weights are available
+- Classical similarity stays enabled as a robust fallback
+- Hybrid score blending improves robustness on noisy signatures
+- NumPy pinned to `<2` for Torch/OpenCV compatibility
 - Memory footprint reduced for low-memory containers:
-  - lighter CNN layers
-  - adaptive global pooling
   - reduced input size (default `128x128`)
-  - limited Torch threads via env
+  - lazy model loading at first verification request
+
+---
+
+## ML Model Details
+
+This section describes the active prediction path in the current codebase.
+
+### 1) Input and preprocessing pipeline
+
+For each uploaded image (`genuine`, `test`), backend preprocessing performs:
+
+1. Decode image bytes using OpenCV
+2. Convert to grayscale
+3. Apply Gaussian blur
+4. Apply Otsu thresholding
+5. Find signature region via contour bounding box
+6. Crop and center signature region
+7. Resize to `128x128`
+8. Normalize pixel values to `[0, 1]`
+9. Convert to tensor shape `(1, 1, H, W)`
+
+Key implementation: [backend/utils/preprocess.py](backend/utils/preprocess.py)
+
+### 2) Siamese encoder architecture
+
+Current encoder is lightweight for serverless memory constraints:
+
+- Conv(1→32) + ReLU + MaxPool
+- Conv(32→64) + ReLU + MaxPool
+- Conv(64→128) + ReLU + MaxPool
+- Conv(128→256) + ReLU + MaxPool
+- AdaptiveAvgPool to `(1,1)`
+- Dense `256 → 256` + Dropout(0.2)
+- Dense `256 → 128` + Dropout(0.2)
+- L2 normalization of final embedding
+
+The Siamese network shares this encoder for both inputs and compares embedding similarity.
+
+Key implementation: [backend/model/siamese_model.py](backend/model/siamese_model.py)
+
+### 3) Dual inference modes (important)
+
+The backend supports two runtime modes and automatically chooses based on model availability:
+
+#### A) `hybrid-neural` mode
+
+Used when pretrained Siamese weights are available.
+
+- Computes neural similarity from Siamese embeddings
+- Computes classical similarity from SSIM + pixel agreement
+- Blends both scores for robustness (`0.85 * neural + 0.15 * classical`)
+- Thresholds:
+  - `>= 0.90` -> `Genuine`
+  - `0.80 - 0.8999` -> `Suspicious`
+  - `< 0.80` -> `Forged`
+
+#### B) `classical-fallback` mode
+
+Used when pretrained neural weights are unavailable or fail to load.
+
+- Computes SSIM (structural similarity)
+- Computes pixel agreement (`1 - mean absolute difference`)
+- Blended score: `0.7 * SSIM + 0.3 * pixel_agreement`
+- Stricter thresholds:
+  - `>= 0.93` → `Genuine`
+  - `0.82 - 0.9299` → `Suspicious`
+  - `< 0.82` → `Forged`
+
+The API response includes `inference_mode`, `neural_score`, and `classical_score` for transparency.
+
+Key implementation:
+
+- [backend/main.py](backend/main.py)
+- [backend/utils/similarity.py](backend/utils/similarity.py)
+
+### 4) Heatmap generation
+
+The system generates a visual difference map:
+
+- Pixel-wise absolute difference
+- Colormap mapping (OpenCV)
+- Optional overlay on the test signature
+- Returned as base64 PNG in `difference_heatmap`
+
+This is an explainability aid, not a calibrated forgery detector by itself.
+
+### 5) Why predictions may still be imperfect
+
+Even with safeguards, signature verification quality depends on:
+
+- Whether true trained domain weights are available
+- Consistency of image capture (angle, pen color, lighting)
+- Background noise and cropping quality
+- Genuine intra-writer variation
+
+The hybrid mode improves robustness, but final quality still depends on model weights and calibration quality.
+
+### 6) Recommended model-improvement roadmap
+
+For better accuracy in real-world use:
+
+1. Train Siamese model on a labeled signature dataset (genuine/forged pairs)
+2. Export and ship fixed versioned weights with integrity checks
+3. Add threshold calibration from validation ROC/EER analysis
+4. Add signature quality gate (reject non-signature/random natural images)
+5. Track metrics in production (false accept / false reject rates)
+
+### 7) Safety and interpretation guidance
+
+- Treat current output as decision support, not legal proof.
+- For high-stakes verification, combine with human review and additional checks.
+- Log `inference_mode`, scores, and input quality metadata for audits.
 
 ---
 
@@ -106,7 +222,7 @@ signature-auth/
 │  └─ utils/
 │     ├─ preprocess.py
 │     └─ similarity.py
-├─ railway.toml
+├─ backend/vercel.json
 ├─ DEPLOYMENT.md
 ├─ QUICKSTART.md
 └─ README.md
@@ -139,7 +255,10 @@ Success response example:
   "similarity_score": 0.91,
   "confidence": "High",
   "difference_heatmap": "data:image/png;base64,...",
-  "verdict": "Genuine"
+  "verdict": "Genuine",
+  "inference_mode": "hybrid-neural",
+  "neural_score": 0.92,
+  "classical_score": 0.87
 }
 ```
 
@@ -155,16 +274,16 @@ Error responses:
 ### Frontend (Vercel)
 
 - `PYTHON_BACKEND_URL`
-  - Example: `https://signet-production-a520.up.railway.app`
+  - Example: `https://signet-backend.vercel.app`
   - Required in Production, Preview, Development
 
-### Backend (Railway)
+### Backend (Vercel)
 
 - `ALLOWED_ORIGINS`
   - Example: `https://signet-rose.vercel.app`
   - Comma-separated list supported by app logic
 - `PORT`
-  - Railway sets this automatically
+  - Vercel sets this automatically for the function runtime
 - `TORCH_NUM_THREADS` (optional)
   - Default: `1`
 - `TORCH_NUM_INTEROP_THREADS` (optional)
@@ -245,17 +364,18 @@ Frontend local URL: `http://localhost:3000`
 
 ## Deployment Guide (Detailed)
 
-### A) Backend on Railway
+### A) Backend on Vercel
 
-1. Create Railway project from GitHub repo.
-2. Ensure Docker build uses root `railway.toml` and `backend/Dockerfile`.
-3. Add backend variables:
-   - `ALLOWED_ORIGINS=https://<your-frontend-domain>`
-4. Deploy and wait for success.
-5. Validate:
+1. Import the repository into Vercel.
+2. Set the Root Directory to `backend`.
+3. Confirm Vercel uses `backend/vercel.json` and `backend/api/index.py`.
+4. Add backend variables:
+  - `ALLOWED_ORIGINS=https://<your-frontend-domain>`
+5. Deploy and wait for success.
+6. Validate:
 
 ```bash
-curl https://<your-railway-domain>/health
+curl https://<your-vercel-backend-domain>/health
 ```
 
 ### B) Frontend on Vercel
@@ -263,7 +383,7 @@ curl https://<your-railway-domain>/health
 1. Import same repository in Vercel.
 2. Set Root Directory to `frontend`.
 3. Add env variable:
-   - `PYTHON_BACKEND_URL=https://<your-railway-domain>`
+  - `PYTHON_BACKEND_URL=https://<your-vercel-backend-domain>`
 4. Deploy.
 5. If env vars are added after first deploy, redeploy once.
 
@@ -271,7 +391,7 @@ curl https://<your-railway-domain>/health
 
 - Backend health returns `200`
 - Vercel env has correct backend URL
-- Railway `ALLOWED_ORIGINS` contains frontend domain
+- Backend `ALLOWED_ORIGINS` contains frontend domain
 - `/api/verify` in browser network tab returns `200`
 
 ---
@@ -292,7 +412,7 @@ Fix:
 
 If `vercel.json` or dashboard env references a non-existing secret, replace with plain value in dashboard env vars.
 
-### Railway Out of Memory
+### Vercel Out of Memory
 
 Symptoms: backend crashes during `/verify`, intermittent 5xx.
 
@@ -311,7 +431,7 @@ Operationally:
 
 ### CORS errors in browser
 
-Set `ALLOWED_ORIGINS` on Railway to exact frontend domain(s), for example:
+Set `ALLOWED_ORIGINS` on the backend deployment to exact frontend domain(s), for example:
 
 `https://signet-rose.vercel.app`
 
@@ -331,7 +451,7 @@ Keep NumPy constrained to `<2` in backend dependencies.
 
 ### Production validation checklist
 
-- [ ] Railway latest deploy = success
+- [ ] Backend Vercel deploy = success
 - [ ] Vercel latest deploy = ready
 - [ ] Backend `/health` = 200
 - [ ] Frontend verify request = 200

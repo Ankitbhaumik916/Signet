@@ -1,232 +1,140 @@
 # Deployment Guide - Signature Authentication System
 
-This guide covers deploying the Signature Authentication System to Vercel (both backend and frontend).
+This guide covers two deployment paths for this repository:
 
-## Prerequisites
-
-- GitHub account with this repository
-- Vercel account (https://vercel.com)
-- Personal access token from GitHub (for pulling during builds)
+- Frontend on Vercel (recommended)
+- Backend on either Vercel (limited) or Hugging Face Spaces Docker (recommended for hybrid-neural Siamese mode)
 
 ---
 
-## Part 1: Backend Deployment (Python FastAPI)
+## Recommended Architecture
 
-### Option A: Deploy to Vercel (Recommended)
+For best model quality:
 
-1. **Connect GitHub Repository to Vercel**
-   - Go to https://vercel.com/new
-   - Import the repository `Ankitbhaumik916/Signet`
-   - Select the **`backend`** directory as the root
+1. Deploy backend to **Hugging Face Spaces (Docker)**
+2. Deploy frontend to **Vercel**
+3. Set frontend `PYTHON_BACKEND_URL` to your Spaces URL
 
-2. **Configure Build Settings**
-   - Build Command: `pip install -r requirements.txt` (automatic for Python)
-   - Output Directory: (leave default)
-   - Framework: None (Python)
-
-3. **Set Environment Variables**
-   - Go to Settings → Environment Variables
-   - Add:
-     ```
-     ALLOWED_ORIGINS=*,https://your-frontend-domain.vercel.app
-     MODEL_CACHE_DIR=/tmp/signature_model_weights
-     ```
-
-4. **Deploy**
-   - Click "Deploy"
-   - After ~2-3 minutes, you'll get a live backend URL (e.g., `https://my-backend.vercel.app`)
-   - **Save this URL** for frontend configuration
-
-### Option B: Deploy to Heroku/Railway/Render
-
-If you prefer other platforms:
-- All use standard Python deployment with `requirements.txt`
-- Ensure `uvicorn` is included (it is, in `requirements.txt`)
-- Set the start command to: `python main.py`
+Reason: the restored backend uses PyTorch + Siamese CNN with hybrid scoring, which is more reliable on container-style hosting than strict serverless limits.
 
 ---
 
-## Part 2: Frontend Deployment (Next.js 14)
+## Part 1: Backend Deployment on Hugging Face Spaces (Docker)
 
-### Deploy to Vercel (Recommended)
+### What is already prepared in this repo
 
-1. **Connect GitHub Repository to Vercel**
-   - Go to https://vercel.com/new
-   - Import the **same** repository
-   - Select the **`frontend`** directory as the root
+- Backend Docker image: `backend/Dockerfile`
+- FastAPI app entrypoint: `backend/main.py`
+- Requirements (including torch): `backend/requirements.txt`
+- Small image context optimization: `backend/.dockerignore`
 
-2. **Configure Build Settings**
-   - Build Command: `npm run build` (automatic for Next.js)
-   - Output Directory: `.next` (automatic)
-   - Framework: Next.js
+### Space settings you need
 
-3. **Set Environment Variables**
-   - Go to Settings → Environment Variables
-   - Add:
-     ```
-     PYTHON_BACKEND_URL=https://your-backend-url.vercel.app
-     ```
-   - Replace `your-backend-url.vercel.app` with the actual backend URL from Part 1
+Create a new Space at <https://huggingface.co/new-space> with:
 
-4. **Deploy**
-   - Click "Deploy"
-   - After build completes (~1-2 minutes), you'll get a live frontend URL
+- SDK: `Docker`
+- Visibility: `Public` or `Private` (your choice)
+- Hardware: `CPU Basic` (free)
+- App Port: `7860`
 
----
+### Environment variables in Space Settings
 
-## Part 3: Verify Deployment
+Add these under **Settings -> Variables and secrets**:
 
-### Test Backend Health
+- `ALLOWED_ORIGINS=https://your-frontend-domain.vercel.app`
+- `TORCH_NUM_THREADS=1`
+- `TORCH_NUM_INTEROP_THREADS=1`
+
+### Step-by-step deploy
+
+1. Create the Docker Space.
+2. Clone the new Space repository locally.
+3. Copy all files from your local `signature-auth/backend` folder into the Space repo root.
+4. Commit and push to the Space repo.
+5. Wait for build + startup to complete in the Space logs.
+6. Test health:
+
 ```bash
-curl https://your-backend-url.vercel.app/health
+curl https://<your-space-subdomain>.hf.space/health
 ```
 
-Expected response:
+Expected JSON includes:
+
 ```json
 {
   "status": "ok",
   "service": "Signature Authentication API",
-  "cuda_available": false
+  "cuda_available": false,
+  "inference_mode": "hybrid-neural"
 }
 ```
 
-### Test Frontend
-- Open `https://your-frontend-domain.vercel.app`
-- Upload two signature images
-- Click "Verify Signature"
-- Confirm results display correctly
-
-### Test API Integration
-- Use the frontend UI to verify signatures
-- Check browser DevTools Network tab to confirm requests go to your backend
+If pretrained weights are unavailable, `inference_mode` will be `classical-fallback`.
 
 ---
 
-## Troubleshooting
+## Part 2: Frontend Deployment on Vercel
 
-### Backend: Model Loading Timeout
-- **Issue**: Deployment takes >10 minutes or times out
-- **Solution**: Model weights are lazy-loaded on first request. First `/verify` call may take 30-60 seconds to download weights (~500MB)
+1. Import this GitHub repository in Vercel.
+2. Set root directory to `frontend`.
+3. Add environment variable:
 
-### Frontend: "Failed to connect to verification service"
-- **Issue**: Frontend can't reach backend
-- **Check**:
-  1. `PYTHON_BACKEND_URL` env var is set correctly in Vercel
-  2. Backend is deployed and healthy (check health endpoint)
-  3. CORS is enabled on backend (it is by default with `ALLOWED_ORIGINS=*`)
-
-### Backend: PyTorch Dependency Issues
-- **Issue**: Build fails with torch wheel errors
-- **Solutions**:
-  1. Increase Lambda memory limit to 1GB in `vercel.json`
-  2. Use `pytorch` instead of `torch` if wheels unavailable
-  3. Deploy to Railway/Render instead (better for Python)
-
----
-
-## Environment Variables Checklist
-
-### Backend (`backend/vercel.json`)
-- ✅ `ALLOWED_ORIGINS` - Set to frontend domain
-- ✅ `MODEL_CACHE_DIR` - Default `/tmp/signature_model_weights` is fine
-
-### Frontend (`frontend/vercel.json`)
-- ✅ `PYTHON_BACKEND_URL` - Set to deployed backend URL
-
----
-
-## Monitoring & Logs
-
-### View Backend Logs
-1. Go to Vercel Dashboard
-2. Select backend project
-3. Click "Deployments"
-4. Select latest deployment
-5. Click "Logs"
-
-### View Frontend Logs
-1. Same steps as backend
-2. Frontend logs show Next.js build and runtime errors
-
----
-
-## Redeployment
-
-To redeploy after making changes:
-
-1. **Commit & Push to GitHub**
-   ```bash
-   cd d:\Signet\signature-auth
-   git add .
-   git commit -m "Your changes"
-   git push origin main
-   ```
-
-2. **Vercel Auto-Redeploys**
-   - Both frontend and backend automatically redeploy on `git push`
-   - Watch deployment progress in Vercel Dashboard
-
----
-
-## Performance Optimization
-
-### Backend
-- CPU inference takes ~1-2 seconds per verification
-- First request to a fresh instance takes 30-60s (model download)
-- Consider using GPU instances for faster inference (paid Vercel feature)
-
-### Frontend
-- Build size: ~143 KB (excellent)
-- Deploy to Vercel edge network for global CDN
-- All static pages pre-rendered
-
----
-
-## Security Notes
-
-1. **CORS Configuration**
-   - Change `ALLOWED_ORIGINS=*` to specific domains in production
-   - Example: `ALLOWED_ORIGINS=https://myapp.vercel.app`
-
-2. **API Authentication**
-   - Currently no auth required
-   - For production, add API key validation in `backend/main.py`
-
-3. **Model Weights**
-   - Weights are downloaded to `/tmp` on first request
-   - Vercel serverless instances are ephemeral
-   - Next instance will download again (this is by design)
-
----
-
-## Local Development
-
-To run locally before deployment:
-
-### Backend
-```bash
-cd backend
-python main.py
-# Runs on http://localhost:8000
+```env
+PYTHON_BACKEND_URL=https://<your-space-subdomain>.hf.space
 ```
 
-### Frontend
-```bash
-cd frontend
-npm run dev
-# Runs on http://localhost:3000
-# Set PYTHON_BACKEND_URL=http://localhost:8000 in .env.local
-```
+4. Deploy frontend.
+5. Re-test from UI with at least one genuine pair and one forged pair.
 
 ---
 
-## Support & Documentation
+## Optional: Backend on Vercel (Not Preferred for Neural)
 
-- **README.md** - Complete project overview
-- **QUICKSTART.md** - 5-minute quick start
-- **Backend API Docs** - Available at `https://your-backend-url.vercel.app/docs` (Swagger UI)
+You can still deploy backend to Vercel from `backend/`, but serverless limits can cause cold-start or runtime failures with heavy ML dependencies.
+
+If you choose this path:
+
+- Keep `backend/vercel.json` as provided
+- Set `ALLOWED_ORIGINS` in backend project
+- Test `/health` and `/verify` after every deploy
 
 ---
 
-**Deployment Status**: ✅ Ready for Production
-**Last Updated**: March 1, 2026
+## Debugging Checklist
+
+If backend returns `FUNCTION_INVOCATION_FAILED` or `500`:
+
+1. Check deployment logs first.
+2. Confirm `torch` is installed and importable in runtime.
+3. Confirm `ALLOWED_ORIGINS` is set.
+4. Confirm frontend points to correct backend URL.
+5. Confirm `/health` is `200` before testing `/verify`.
+
+If model quality seems low:
+
+1. Check `inference_mode` in API response.
+2. If `classical-fallback`, ensure pretrained weights are accessible.
+3. Inspect `neural_score` and `classical_score` values from `/verify` response.
+
+---
+
+## Final Verification
+
+Backend checks:
+
+- `GET /health` returns `200`
+- `POST /verify` returns `200` with score + verdict
+
+Frontend checks:
+
+- Results page shows `Inference Mode`
+- Results page shows score details correctly
+- Heatmap toggle works
+
+---
+
+Deployment status target:
+
+- Backend (Spaces): healthy
+- Frontend (Vercel): connected to backend
+- End-to-end verification: successful

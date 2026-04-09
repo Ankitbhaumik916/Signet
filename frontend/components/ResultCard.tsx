@@ -11,6 +11,9 @@ interface VerificationResult {
   confidence: string
   difference_heatmap: string
   verdict: string
+  inference_mode?: 'hybrid-neural' | 'classical-fallback' | string
+  neural_score?: number | null
+  classical_score?: number | null
 }
 
 interface ResultCardProps {
@@ -32,6 +35,11 @@ export default function ResultCard({
 }: ResultCardProps) {
   const [showHeatmap, setShowHeatmap] = useState(false)
   const percentage = Math.round(result.similarity_score * 100)
+  const mode = result.inference_mode ?? 'classical-fallback'
+
+  const thresholds = mode === 'hybrid-neural'
+    ? { genuine: 90, suspicious: 80 }
+    : { genuine: 93, suspicious: 82 }
 
   const getVerdictIcon = (verdict: string) => {
     switch (verdict.toLowerCase()) {
@@ -57,6 +65,39 @@ export default function ResultCard({
       default:
         return ''
     }
+  }
+
+  const getScoreBarColorClass = (score: number) => {
+    if (score >= 0.9) return 'bg-green-500'
+    if (score >= 0.8) return 'bg-amber-500'
+    return 'bg-red-500'
+  }
+
+  const getScoreTextColorClass = (score: number) => {
+    if (score >= 0.9) return 'text-green-400'
+    if (score >= 0.8) return 'text-amber-400'
+    return 'text-red-400'
+  }
+
+  const renderScoreBar = (label: string, score: number) => {
+    const width = Math.max(0, Math.min(100, score * 100))
+
+    return (
+      <div className="space-y-2" key={label}>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-gray-300">{label}</span>
+          <span className={`font-semibold ${getScoreTextColorClass(score)}`}>
+            {Math.round(width)}%
+          </span>
+        </div>
+        <div className="h-2.5 w-full overflow-hidden rounded-full bg-dark-700">
+          <div
+            className={`h-full ${getScoreBarColorClass(score)}`}
+            style={{ width: `${width}%` }}
+          />
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -96,12 +137,23 @@ export default function ResultCard({
           <div className={`badge ${getVerdictBadgeClass(result.verdict)} justify-center w-fit mx-auto`}>
             {result.confidence} Confidence
           </div>
+
+          {(typeof result.neural_score === 'number' || typeof result.classical_score === 'number') && (
+            <div className="mx-auto mt-4 w-full max-w-xl space-y-3 rounded-lg border border-dark-700 bg-dark-800/40 p-4 text-left">
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                Confidence Indicators
+              </div>
+              {typeof result.neural_score === 'number' && renderScoreBar('Neural Score', result.neural_score)}
+              {typeof result.classical_score === 'number' && renderScoreBar('Classical Score', result.classical_score)}
+            </div>
+          )}
         </div>
       </motion.div>
 
       {/* Similarity Meter */}
       <SimilarityMeter
         score={result.similarity_score * 100}
+        inferenceMode={mode}
         isVisible={true}
       />
 
@@ -186,6 +238,10 @@ export default function ResultCard({
       >
         <h3 className="text-lg font-semibold">Verification Details</h3>
 
+        <div className="inline-flex items-center rounded-full border border-primary-500/40 bg-primary-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary-300">
+          Inference Mode: {mode === 'hybrid-neural' ? 'Hybrid Neural' : 'Classical Fallback'}
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <div className="text-sm text-gray-400">Similarity Score</div>
@@ -222,21 +278,39 @@ export default function ResultCard({
             <div className="text-sm text-gray-400">Verdict</div>
             <div className="text-2xl font-bold">{result.verdict.toUpperCase()}</div>
           </div>
+
+          {typeof result.neural_score === 'number' && (
+            <div className="space-y-2">
+              <div className="text-sm text-gray-400">Neural Score</div>
+              <div className="text-2xl font-bold text-violet-300">
+                {Math.round(result.neural_score * 100)}%
+              </div>
+            </div>
+          )}
+
+          {typeof result.classical_score === 'number' && (
+            <div className="space-y-2">
+              <div className="text-sm text-gray-400">Classical Score</div>
+              <div className="text-2xl font-bold text-cyan-300">
+                {Math.round(result.classical_score * 100)}%
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Score Range Info */}
         <div className="border-t border-dark-700 pt-4 mt-4">
           <div className="text-xs text-gray-400 space-y-2">
             <p>
-              <span className="text-green-400">≥ 85%</span>
+              <span className="text-green-400">≥ {thresholds.genuine}%</span>
               {' '}→ GENUINE (High Confidence)
             </p>
             <p>
-              <span className="text-yellow-400">70-85%</span>
+              <span className="text-yellow-400">{thresholds.suspicious}-{thresholds.genuine - 1}%</span>
               {' '}→ SUSPICIOUS (Medium Confidence)
             </p>
             <p>
-              <span className="text-red-400">&lt; 70%</span>
+              <span className="text-red-400">&lt; {thresholds.suspicious}%</span>
               {' '}→ FORGED (High Confidence)
             </p>
           </div>

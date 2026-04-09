@@ -7,8 +7,6 @@ import cv2
 import numpy as np
 import torch
 import logging
-from io import BytesIO
-from PIL import Image
 from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -252,15 +250,19 @@ def preprocess_signature(
         else:
             normalized = normalize_image(resized)
         
+        # Optional quality gate: reject near-empty or near-solid inputs.
+        signal_ratio = float((normalized > 0.1).mean())
+        if signal_ratio < 0.003 or signal_ratio > 0.90:
+            logger.warning("Input rejected by quality gate (signal_ratio=%.4f)", signal_ratio)
+            return None
+
         # Step 8: Convert to tensor
         # Shape: (H, W) -> (1, H, W) -> (1, 1, H, W)
         tensor = torch.from_numpy(normalized).float()
-        tensor = tensor.unsqueeze(0)  # Add channel dimension
-        tensor = tensor.unsqueeze(0)  # Add batch dimension
-        
-        # Move to device
+        tensor = tensor.unsqueeze(0)
+        tensor = tensor.unsqueeze(0)
         tensor = tensor.to(device)
-        
+
         logger.info(f"Image preprocessed successfully. Shape: {tensor.shape}")
         return tensor
     
@@ -305,7 +307,7 @@ def preprocess_signature_with_inversion(
         tensor = torch.from_numpy(normalized).float()
         tensor = tensor.unsqueeze(0).unsqueeze(0)
         tensor = tensor.to(device)
-        
+
         return tensor
     
     except Exception as e:

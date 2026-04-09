@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Upload, X } from 'lucide-react'
 import { motion } from 'framer-motion'
@@ -24,25 +24,66 @@ export default function SignatureUploader({
   previewUrl,
   isProcessing = false,
 }: SignatureUploaderProps) {
+  const [validationError, setValidationError] = useState<string>('')
+
+  const validateImageDimensions = useCallback((file: File): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const image = new Image()
+      const objectUrl = URL.createObjectURL(file)
+
+      image.onload = () => {
+        const isValid = image.width >= 100 && image.height >= 100
+        URL.revokeObjectURL(objectUrl)
+        resolve(isValid)
+      }
+
+      image.onerror = () => {
+        URL.revokeObjectURL(objectUrl)
+        resolve(false)
+      }
+
+      image.src = objectUrl
+    })
+  }, [])
+
   const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
+    async (acceptedFiles: File[]) => {
       if (acceptedFiles.length > 0) {
         const file = acceptedFiles[0]
-        // Validate file type
-        if (file.type.startsWith('image/')) {
-          onFileSelect(file)
-        } else {
-          alert('Please upload a valid image file')
+        const allowedTypes = ['image/jpeg', 'image/png']
+        const maxBytes = 5 * 1024 * 1024
+
+        if (!allowedTypes.includes(file.type)) {
+          setValidationError('Only JPEG and PNG images are allowed.')
+          onFileSelect(null)
+          return
         }
+
+        if (file.size >= maxBytes) {
+          setValidationError('Image must be smaller than 5 MB.')
+          onFileSelect(null)
+          return
+        }
+
+        const hasValidDimensions = await validateImageDimensions(file)
+        if (!hasValidDimensions) {
+          setValidationError('Image must be at least 100x100 pixels.')
+          onFileSelect(null)
+          return
+        }
+
+        setValidationError('')
+        onFileSelect(file)
       }
     },
-    [onFileSelect]
+    [onFileSelect, validateImageDimensions]
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'image/*': ['.jpeg', '.jpg', '.png', '.gif', '.bmp', '.webp'],
+      'image/jpeg': ['.jpeg', '.jpg'],
+      'image/png': ['.png'],
     },
     disabled: isProcessing || selectedFile !== undefined,
     maxFiles: 1,
@@ -50,6 +91,7 @@ export default function SignatureUploader({
 
   const handleRemove = (e: React.MouseEvent) => {
     e.stopPropagation()
+    setValidationError('')
     onFileSelect(null)
   }
 
@@ -147,9 +189,20 @@ export default function SignatureUploader({
           </div>
 
           <div className="text-xs text-gray-500 text-center">
-            Supported formats: JPG, PNG, GIF, BMP, WebP
+            Supported formats: JPG, PNG | Max size: 5 MB | Min size: 100x100 px
           </div>
         </div>
+      )}
+
+      {validationError && (
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-lg border border-red-700/50 bg-red-900/20 px-3 py-2 text-sm text-red-300"
+          role="alert"
+        >
+          {validationError}
+        </motion.div>
       )}
     </motion.div>
   )

@@ -17,7 +17,7 @@ Core value:
 Technology stack (high level):
 - Frontend: Next.js 14, React 18, TypeScript, Tailwind CSS, Framer Motion
 - Backend: FastAPI, PyTorch, OpenCV, NumPy
-- Deployment: Frontend on Vercel, Backend on Railway/Vercel-compatible Python deployment
+- Deployment: Frontend on Vercel, Backend on Vercel Python deployment
 
 
 ============================================================
@@ -145,7 +145,6 @@ signature-auth/
   FINAL_REPORT.md
   QUICKSTART.md
   README.md
-  railway.toml
   validate.py
   VALIDATION_REPORT.py
 
@@ -154,7 +153,6 @@ signature-auth/
     Dockerfile
     main.py
     pyproject.toml
-    railway.toml
     requirements.txt
     vercel.json
 
@@ -272,14 +270,14 @@ Design considerations observed in docs:
 
 Current deployment references (as documented):
 - Frontend (Vercel): https://signet-rose.vercel.app/
-- Backend (Railway): https://signet-production-a520.up.railway.app
+- Backend (Vercel): https://signet-backend.vercel.app
 - Health endpoint: /health
 
 Readiness indicators from existing documentation:
 - Backend Python syntax validated.
 - Frontend TypeScript build validated.
 - Next.js production build succeeds.
-- Config files present for Vercel/Railway.
+- Config files present for Vercel.
 
 Environment variables:
 - Frontend:

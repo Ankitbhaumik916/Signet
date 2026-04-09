@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 
 interface SimilarityMeterProps {
   score: number
+  inferenceMode?: 'hybrid-neural' | 'classical-fallback' | string
   isVisible: boolean
 }
 
@@ -12,18 +13,24 @@ interface SimilarityMeterProps {
  * Animated circular progress gauge showing similarity score
  * Color-coded: Green (genuine) / Yellow (suspicious) / Red (forged)
  */
-export default function SimilarityMeter({ score, isVisible }: SimilarityMeterProps) {
+export default function SimilarityMeter({ score, inferenceMode = 'classical-fallback', isVisible }: SimilarityMeterProps) {
   const [animatedScore, setAnimatedScore] = useState(0)
 
+  const thresholds = inferenceMode === 'hybrid-neural'
+    ? { genuine: 90, suspicious: 80 }
+    : { genuine: 93, suspicious: 82 }
+
   const getGaugeColor = (value: number) => {
-    if (value >= 0.85) return '#22c55e'
-    if (value >= 0.70) return '#eab308'
+    const percent = value * 100
+    if (percent >= thresholds.genuine) return '#22c55e'
+    if (percent >= thresholds.suspicious) return '#eab308'
     return '#ef4444'
   }
 
   const getLabel = (value: number) => {
-    if (value >= 0.85) return 'GENUINE'
-    if (value >= 0.70) return 'SUSPICIOUS'
+    const percent = value * 100
+    if (percent >= thresholds.genuine) return 'GENUINE'
+    if (percent >= thresholds.suspicious) return 'SUSPICIOUS'
     return 'FORGED'
   }
 
@@ -118,7 +125,11 @@ export default function SimilarityMeter({ score, isVisible }: SimilarityMeterPro
       {/* Score Label */}
       <motion.div
         className={`badge ${
-          percentage >= 85 ? 'badge-success' : percentage >= 70 ? 'badge-warning' : 'badge-danger'
+          percentage >= thresholds.genuine
+            ? 'badge-success'
+            : percentage >= thresholds.suspicious
+              ? 'badge-warning'
+              : 'badge-danger'
         }`}
         initial={{ y: 10, opacity: 0 }}
         animate={isVisible ? { y: 0, opacity: 1 } : { y: 10, opacity: 0 }}
@@ -134,9 +145,9 @@ export default function SimilarityMeter({ score, isVisible }: SimilarityMeterPro
         animate={isVisible ? { opacity: 1 } : { opacity: 0 }}
         transition={{ delay: 0.6 }}
       >
-        <div>≥ 85%: Genuine (High)</div>
-        <div>70-85%: Suspicious (Medium)</div>
-        <div>&lt; 70%: Forged (High)</div>
+        <div>≥ {thresholds.genuine}%: Genuine (High)</div>
+        <div>{thresholds.suspicious}-{thresholds.genuine - 1}%: Suspicious (Medium)</div>
+        <div>&lt; {thresholds.suspicious}%: Forged (High)</div>
       </motion.div>
     </motion.div>
   )
