@@ -17,6 +17,7 @@ import json
 from datetime import datetime, timezone
 from time import perf_counter
 from contextvars import ContextVar
+from threading import Lock
 
 from model.siamese_model import SiameseModel
 from utils.embedding_cache import EmbeddingLRUCache
@@ -81,13 +82,62 @@ model = None
 embedding_cache = EmbeddingLRUCache(max_size=int(os.getenv("EMBEDDING_CACHE_SIZE", "256")))
 request_context: ContextVar[dict] = ContextVar("request_context", default={})
 REQUEST_LOG_PATH = os.getenv("REQUEST_LOG_PATH", "/tmp/verify_requests.jsonl")
+VERIFICATION_COUNTER_PATH = Path(
+    os.getenv(
+        "VERIFICATION_COUNTER_PATH",
+        str(Path(__file__).resolve().parent / "verification_counter.json"),
+    )
+)
+verification_counter_lock = Lock()
+verification_counter = 0
+
+
+def _load_verification_counter() -> int:
+    try:
+        if VERIFICATION_COUNTER_PATH.exists():
+            with open(VERIFICATION_COUNTER_PATH, "r", encoding="utf-8") as counter_file:
+                payload = json.load(counter_file)
+                return int(payload.get("verification_count", 0))
+    except Exception as exc:
+        logger.warning("Failed to load verification counter: %s", exc)
+
+    return 0
+
+
+def _persist_verification_counter(count: int) -> None:
+    try:
+        with open(VERIFICATION_COUNTER_PATH, "w", encoding="utf-8") as counter_file:
+            json.dump({"verification_count": count}, counter_file)
+    except Exception as exc:
+        logger.warning("Failed to persist verification counter: %s", exc)
+
+
+def _increment_verification_counter() -> int:
+    global verification_counter
+    with verification_counter_lock:
+        verification_counter += 1
+        _persist_verification_counter(verification_counter)
+        return verification_counter
 
 
 def _load_weights_from_candidates(model_wrapper: SiameseModel) -> str | None:
     """Try common local weight paths for HF Spaces startup and return loaded path."""
     configured_path = os.getenv("MODEL_WEIGHTS_PATH", "").strip()
+    backend_dir = Path(__file__).resolve().parent
+    project_dir = backend_dir.parent
+    workspace_dir = project_dir.parent
     candidates = [
         configured_path,
+        str(backend_dir / "model_weights" / "siamese_model.pth"),
+        str(backend_dir / "model_weights" / "siamese_model.pt"),
+        str(project_dir / "model_weights" / "siamese_model.pth"),
+        str(project_dir / "model_weights" / "siamese_model.pt"),
+        str(project_dir / "siamese_model.pth"),
+        str(project_dir / "siamese_model.pt"),
+        str(workspace_dir / "siamese_model.pth"),
+        str(workspace_dir / "siamese_model.pt"),
+        str(workspace_dir / "Signet_bck" / "model_weights" / "siamese_model.pth"),
+        str(workspace_dir / "Signet_bck" / "model_weights" / "siamese_model.pt"),
         "/app/model_weights/siamese_model.pth",
         "/app/model_weights/siamese_model.pt",
         "/tmp/signature_model_weights/siamese_model.pth",
@@ -107,8 +157,12 @@ def _load_weights_from_candidates(model_wrapper: SiameseModel) -> str | None:
             checkpoint = torch.load(weight_path, map_location=model_wrapper.device)
 
             state_dict = checkpoint
-            if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
-                state_dict = checkpoint["state_dict"]
+            if isinstance(checkpoint, dict):
+                state_dict = (
+                    checkpoint.get("model_state_dict")
+                    or checkpoint.get("state_dict")
+                    or checkpoint
+                )
 
             model_wrapper.model.load_state_dict(state_dict, strict=True)
             model_wrapper.model.eval()
@@ -213,6 +267,9 @@ def load_model():
 async def startup_event():
     """Startup hook that eagerly initializes model so mode is known before first request."""
     logger.info("Running eager model initialization at startup")
+    global verification_counter
+    verification_counter = _load_verification_counter()
+    logger.info("Loaded verification counter=%s", verification_counter)
     load_model()
 
 
@@ -227,7 +284,8 @@ async def health_check():
         "status": "ok",
         "service": "Signature Authentication API",
         "cuda_available": torch.cuda.is_available(),
-        "inference_mode": current_mode
+        "inference_mode": current_mode,
+        "verification_count": verification_counter,
     }
 
 
@@ -390,7 +448,8 @@ async def verify_signature(
                 "verdict": verdict,
                 "inference_mode": inference_mode,
                 "neural_score": neural_score,
-                "classical_score": float(classical_score)
+                "classical_score": float(classical_score),
+                "verification_count": _increment_verification_counter(),
             }
         )
 
@@ -426,6 +485,7 @@ async def root():
         "message": "Signature Authentication API",
         "docs": "/docs",
         "health": "/health",
+        "verification_count": verification_counter,
         "endpoints": {
             "verify": "POST /verify"
         }

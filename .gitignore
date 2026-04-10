@@ -51,3 +51,6 @@ data/val/
 *.pt
 *.pth
 *.h5
+
+backend/verification_counter.json
+frontend/tsconfig.tsbuildinfo

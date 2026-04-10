@@ -44,11 +44,11 @@ export default function ResultCard({
   const getVerdictIcon = (verdict: string) => {
     switch (verdict.toLowerCase()) {
       case 'genuine':
-        return <CheckCircle className="w-12 h-12 text-green-400" />
+        return <CheckCircle className="w-12 h-12" style={{ color: 'var(--success)' }} />
       case 'forged':
-        return <XCircle className="w-12 h-12 text-red-400" />
+        return <XCircle className="w-12 h-12" style={{ color: 'var(--danger)' }} />
       case 'suspicious':
-        return <AlertCircle className="w-12 h-12 text-yellow-400" />
+        return <AlertCircle className="w-12 h-12" style={{ color: 'var(--warning)' }} />
       default:
         return null
     }
@@ -57,43 +57,38 @@ export default function ResultCard({
   const getVerdictBadgeClass = (verdict: string) => {
     switch (verdict.toLowerCase()) {
       case 'genuine':
-        return 'badge-success'
+        return { bg: 'rgba(0, 229, 160, 0.1)', border: 'rgba(0, 229, 160, 0.3)', color: 'var(--success)' }
       case 'forged':
-        return 'badge-danger'
+        return { bg: 'rgba(255, 74, 106, 0.1)', border: 'rgba(255, 74, 106, 0.3)', color: 'var(--danger)' }
       case 'suspicious':
-        return 'badge-warning'
+        return { bg: 'rgba(255, 184, 0, 0.1)', border: 'rgba(255, 184, 0, 0.3)', color: 'var(--warning)' }
       default:
-        return ''
+        return { bg: 'transparent', border: 'var(--border)', color: 'var(--text)' }
     }
   }
 
-  const getScoreBarColorClass = (score: number) => {
-    if (score >= 0.9) return 'bg-green-500'
-    if (score >= 0.8) return 'bg-amber-500'
-    return 'bg-red-500'
-  }
-
-  const getScoreTextColorClass = (score: number) => {
-    if (score >= 0.9) return 'text-green-400'
-    if (score >= 0.8) return 'text-amber-400'
-    return 'text-red-400'
+  const getScoreColor = (score: number) => {
+    if (score >= 0.9) return 'var(--success)'
+    if (score >= 0.8) return 'var(--warning)'
+    return 'var(--danger)'
   }
 
   const renderScoreBar = (label: string, score: number) => {
     const width = Math.max(0, Math.min(100, score * 100))
+    const color = getScoreColor(score)
 
     return (
       <div className="space-y-2" key={label}>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-300">{label}</span>
-          <span className={`font-semibold ${getScoreTextColorClass(score)}`}>
+          <span style={{ color: 'var(--text)' }}>{label}</span>
+          <span className="font-semibold" style={{ color }}>
             {Math.round(width)}%
           </span>
         </div>
-        <div className="h-2.5 w-full overflow-hidden rounded-full bg-dark-700">
+        <div className="h-2.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: 'var(--card)' }}>
           <div
-            className={`h-full ${getScoreBarColorClass(score)}`}
-            style={{ width: `${width}%` }}
+            className="h-full"
+            style={{ width: `${width}%`, backgroundColor: color }}
           />
         </div>
       </div>
@@ -113,7 +108,8 @@ export default function ResultCard({
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ delay: 0.2, type: 'spring', stiffness: 100 }}
-        className="card text-center space-y-4"
+        className="p-6 rounded-xl border text-center space-y-4"
+        style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)' }}
       >
         <motion.div
           animate={{
@@ -129,18 +125,21 @@ export default function ResultCard({
         </motion.div>
 
         <div className="space-y-2">
-          <h2 className="text-3xl font-bold">
+          <h2 className="text-3xl font-bold" style={{ color: 'var(--text)' }}>
             {result.verdict === 'Genuine' && '✓ GENUINE'}
             {result.verdict === 'Forged' && '✗ FORGED'}
             {result.verdict === 'Suspicious' && '⚠ SUSPICIOUS'}
           </h2>
-          <div className={`badge ${getVerdictBadgeClass(result.verdict)} justify-center w-fit mx-auto`}>
+          <div 
+            className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold border mx-auto"
+            style={{ ...getVerdictBadgeClass(result.verdict), border: '1px solid ' + getVerdictBadgeClass(result.verdict).border }}
+          >
             {result.confidence} Confidence
           </div>
 
           {(typeof result.neural_score === 'number' || typeof result.classical_score === 'number') && (
-            <div className="mx-auto mt-4 w-full max-w-xl space-y-3 rounded-lg border border-dark-700 bg-dark-800/40 p-4 text-left">
-              <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+            <div className="mx-auto mt-4 w-full max-w-xl space-y-3 rounded-lg border p-4 text-left" style={{ backgroundColor: 'var(--card2)', borderColor: 'var(--border)' }}>
+              <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--muted)' }}>
                 Confidence Indicators
               </div>
               {typeof result.neural_score === 'number' && renderScoreBar('Neural Score', result.neural_score)}
@@ -162,18 +161,19 @@ export default function ResultCard({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
-        className="card"
+        className="p-6 rounded-xl border"
+        style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)' }}
       >
-        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <span className="text-primary-400">→</span>
+        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text)' }}>
+          <span style={{ color: 'var(--accent)' }}>→</span>
           Signature Comparison
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Genuine Signature */}
           <div className="space-y-2">
-            <div className="text-sm text-gray-400 font-semibold">GENUINE (Reference)</div>
-            <div className="relative bg-dark-700 rounded-lg overflow-hidden border border-dark-600 aspect-[3/4]">
+            <div className="text-sm font-semibold" style={{ color: 'var(--muted)' }}>GENUINE (Reference)</div>
+            <div className="relative rounded-lg overflow-hidden border aspect-[3/4]" style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={genuineImageUrl}
@@ -185,8 +185,8 @@ export default function ResultCard({
 
           {/* Test Signature */}
           <div className="space-y-2">
-            <div className="text-sm text-gray-400 font-semibold">TEST (Verification)</div>
-            <div className="relative bg-dark-700 rounded-lg overflow-hidden border border-dark-600 aspect-[3/4]">
+            <div className="text-sm font-semibold" style={{ color: 'var(--muted)' }}>TEST (Verification)</div>
+            <div className="relative rounded-lg overflow-hidden border aspect-[3/4]" style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}>
               {showHeatmap && result.difference_heatmap ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -212,7 +212,8 @@ export default function ResultCard({
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setShowHeatmap(!showHeatmap)}
-            className="btn-secondary mt-4 w-full flex items-center justify-center gap-2"
+            className="mt-4 w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all duration-200 border"
+            style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border2)', color: 'var(--text)' }}
           >
             {showHeatmap ? (
               <>
@@ -234,55 +235,59 @@ export default function ResultCard({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.6 }}
-        className="card space-y-4"
+        className="p-6 rounded-xl border space-y-4"
+        style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)' }}
       >
-        <h3 className="text-lg font-semibold">Verification Details</h3>
+        <h3 className="text-lg font-semibold" style={{ color: 'var(--text)' }}>Verification Details</h3>
 
-        <div className="inline-flex items-center rounded-full border border-primary-500/40 bg-primary-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary-300">
+        <div 
+          className="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide"
+          style={{ backgroundColor: 'var(--accent-dim)', borderColor: 'var(--border2)', color: 'var(--accent)' }}
+        >
           Inference Mode: {mode === 'hybrid-neural' ? 'Hybrid Neural' : 'Classical Fallback'}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <div className="text-sm text-gray-400">Similarity Score</div>
-            <div className="text-2xl font-bold text-primary-400">{percentage}%</div>
+            <div className="text-sm" style={{ color: 'var(--muted)' }}>Similarity Score</div>
+            <div className="text-2xl font-bold" style={{ color: 'var(--accent)' }}>{percentage}%</div>
           </div>
 
           <div className="space-y-2">
-            <div className="text-sm text-gray-400">Confidence Level</div>
+            <div className="text-sm" style={{ color: 'var(--muted)' }}>Confidence Level</div>
             <div className="text-2xl font-bold">
               {result.confidence === 'High' && (
-                <span className="text-green-400">HIGH</span>
+                <span style={{ color: 'var(--success)' }}>HIGH</span>
               )}
               {result.confidence === 'Medium' && (
-                <span className="text-yellow-400">MEDIUM</span>
+                <span style={{ color: 'var(--warning)' }}>MEDIUM</span>
               )}
               {result.confidence === 'Low' && (
-                <span className="text-red-400">LOW</span>
+                <span style={{ color: 'var(--danger)' }}>LOW</span>
               )}
             </div>
           </div>
 
           <div className="space-y-2">
-            <div className="text-sm text-gray-400">Authentication Status</div>
+            <div className="text-sm" style={{ color: 'var(--muted)' }}>Authentication Status</div>
             <div className="text-2xl font-bold">
               {result.is_authentic ? (
-                <span className="text-green-400">AUTHENTIC</span>
+                <span style={{ color: 'var(--success)' }}>AUTHENTIC</span>
               ) : (
-                <span className="text-red-400">NOT AUTHENTIC</span>
+                <span style={{ color: 'var(--danger)' }}>NOT AUTHENTIC</span>
               )}
             </div>
           </div>
 
           <div className="space-y-2">
-            <div className="text-sm text-gray-400">Verdict</div>
-            <div className="text-2xl font-bold">{result.verdict.toUpperCase()}</div>
+            <div className="text-sm" style={{ color: 'var(--muted)' }}>Verdict</div>
+            <div className="text-2xl font-bold" style={{ color: 'var(--text)' }}>{result.verdict.toUpperCase()}</div>
           </div>
 
           {typeof result.neural_score === 'number' && (
             <div className="space-y-2">
-              <div className="text-sm text-gray-400">Neural Score</div>
-              <div className="text-2xl font-bold text-violet-300">
+              <div className="text-sm" style={{ color: 'var(--muted)' }}>Neural Score</div>
+              <div className="text-2xl font-bold" style={{ color: '#a78bfa' }}>
                 {Math.round(result.neural_score * 100)}%
               </div>
             </div>
@@ -290,8 +295,8 @@ export default function ResultCard({
 
           {typeof result.classical_score === 'number' && (
             <div className="space-y-2">
-              <div className="text-sm text-gray-400">Classical Score</div>
-              <div className="text-2xl font-bold text-cyan-300">
+              <div className="text-sm" style={{ color: 'var(--muted)' }}>Classical Score</div>
+              <div className="text-2xl font-bold" style={{ color: '#06b6d4' }}>
                 {Math.round(result.classical_score * 100)}%
               </div>
             </div>
@@ -299,18 +304,18 @@ export default function ResultCard({
         </div>
 
         {/* Score Range Info */}
-        <div className="border-t border-dark-700 pt-4 mt-4">
-          <div className="text-xs text-gray-400 space-y-2">
+        <div className="border-t pt-4 mt-4" style={{ borderColor: 'var(--border)' }}>
+          <div className="text-xs space-y-2" style={{ color: 'var(--muted)' }}>
             <p>
-              <span className="text-green-400">≥ {thresholds.genuine}%</span>
+              <span style={{ color: 'var(--success)' }}>≥ {thresholds.genuine}%</span>
               {' '}→ GENUINE (High Confidence)
             </p>
             <p>
-              <span className="text-yellow-400">{thresholds.suspicious}-{thresholds.genuine - 1}%</span>
+              <span style={{ color: 'var(--warning)' }}>{thresholds.suspicious}-{thresholds.genuine - 1}%</span>
               {' '}→ SUSPICIOUS (Medium Confidence)
             </p>
             <p>
-              <span className="text-red-400">&lt; {thresholds.suspicious}%</span>
+              <span style={{ color: 'var(--danger)' }}>&lt; {thresholds.suspicious}%</span>
               {' '}→ FORGED (High Confidence)
             </p>
           </div>
@@ -328,7 +333,8 @@ export default function ResultCard({
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={onReset}
-          className="btn-primary"
+          className="px-8 py-3 rounded-lg font-bold transition-all duration-200"
+          style={{ backgroundColor: 'var(--accent)', color: 'var(--bg)' }}
         >
           Try Another Verification
         </motion.button>
